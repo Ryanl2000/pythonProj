@@ -6,16 +6,7 @@ import time
 import random
 import string
 import logging
-import traceba            # 等待页面完全加载
-            self.driver.execute_script("window.scrollTo(0, 0);")  # 滚动到页面顶部
-            time.sleep(2)  # 等待页面稳定
-            
-            # 检查页面是否完全加载
-            try:
-                self.wait.until(lambda driver: driver.execute_script("return document.readyState") == "complete")
-                logging.info("页面加载完成")
-            except TimeoutException:
-                logging.warning("等待页面加载完成超时")
+import traceback
 # 配置日志
 logging.basicConfig(
     level=logging.INFO,
@@ -31,6 +22,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 from fake_useragent import UserAgent
 
@@ -38,31 +30,110 @@ class OutlookRegistration:
     def __init__(self):
         self.ua = UserAgent()
         chrome_options = webdriver.ChromeOptions()
+        
+        # 基本配置
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--disable-software-rasterizer')
+        
+        # 性能优化
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-sync')
+        chrome_options.add_argument('--disable-logging')
+        chrome_options.add_argument('--disable-remote-fonts')
+        
+        # 内存优化
+        chrome_options.add_argument('--disable-dev-tools')
+        chrome_options.add_argument('--disable-browser-side-navigation')
+        chrome_options.add_argument('--dns-prefetch-disable')
+        
+        # 伪装配置
         chrome_options.add_argument(f'user-agent={self.ua.random}')
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        chrome_options.add_argument('--disable-notifications')
-        chrome_options.add_argument('--start-maximized')  # 最大化窗口
-        chrome_options.add_argument('--disable-popup-blocking')  # 禁用弹窗拦截
-        chrome_options.add_argument('--disable-infobars')  # 禁用信息栏
-        chrome_options.add_argument('--disable-extensions')  # 禁用扩展
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
-        chrome_options.add_experimental_option('prefs', {
+        
+        # 窗口配置
+        chrome_options.add_argument('--start-maximized')
+        chrome_options.add_argument('--window-size=1920,1080')
+        
+        # 功能控制
+        chrome_options.add_argument('--disable-notifications')
+        chrome_options.add_argument('--disable-popup-blocking')
+        chrome_options.add_argument('--disable-infobars')
+        
+        # 保持会话配置
+        chrome_options.add_experimental_option("detach", True)
+        chrome_options.add_argument('--disable-session-crashed-bubble')
+        
+        # 性能优化配置
+        prefs = {
             'profile.default_content_setting_values': {
                 'notifications': 2,
-                'popups': 2
-            }
-        })
+                'popups': 2,
+                'geolocation': 2
+            },
+            'profile.password_manager_enabled': False,
+            'profile.managed_default_content_settings.images': 1,
+            'disk-cache-size': 4096,
+            'profile.default_content_settings.popups': 0
+        }
+        chrome_options.add_experimental_option('prefs', prefs)
+        # 添加保持浏览器打开的选项
+        chrome_options.add_experimental_option("detach", True)
+        # 添加禁用自动化标记的选项
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        # 添加稳定性选项
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--ignore-certificate-errors')
         # chrome_options.add_argument('--headless')  # 无界面模式，取消注释以启用
         
         try:
             # 直接使用系统安装的Chrome浏览器
-            self.driver = webdriver.Chrome(options=chrome_options)
-            self.wait = WebDriverWait(self.driver, 60)  # 设置默认等待时间为60秒
-            self.driver.set_page_load_timeout(90)  # 设置页面加载超时时间为90秒
-            self.driver.set_script_timeout(60)  # 设置脚本超时时间为60秒
-            # 设置隐式等待时间
-            self.driver.implicitly_wait(30)
+            # 创建新的ChromeDriver服务
+            service = ChromeService(ChromeDriverManager().install())
+            
+            # 初始化WebDriver
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            
+            # 配置超时和等待时间
+            self.wait = WebDriverWait(self.driver, 30)
+            self.driver.set_page_load_timeout(30)
+            self.driver.set_script_timeout(30)
+            self.driver.implicitly_wait(0)  # 禁用隐式等待
+            
+            # 设置窗口大小
+            self.driver.set_window_size(1920, 1080)
+            
+            try:
+                # 注入反检测脚本
+                with open('stealth.min.js', 'r') as f:
+                    js = f.read()
+                self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                    'source': js
+                })
+                
+                # 执行额外的反检测措施
+                self.driver.execute_script("""
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => false
+                    });
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5]
+                    });
+                    window.navigator.chrome = {
+                        runtime: {},
+                    };
+                """)
+                
+                logging.info("成功初始化Chrome浏览器并注入反检测脚本")
+            except Exception as e:
+                logging.warning(f"注入反检测脚本时出错: {str(e)}")
+                # 继续执行，因为这不是致命错误
             logging.info("成功初始化Chrome浏览器")
         except Exception as e:
             logging.error(f"初始化Chrome浏览器失败: {str(e)}")
@@ -83,6 +154,8 @@ class OutlookRegistration:
         username = ''.join(random.choices(string.ascii_lowercase, k=8))
         # 生成随机密码
         password = ''.join(random.choices(string.ascii_letters + string.digits + '@#$%', k=12))
+        # 打印生成的密码到日志
+        logging.info(f"生成的随机密码: {password}")
         return username, password
 
     def handle_popups(self):
@@ -135,8 +208,7 @@ class OutlookRegistration:
             
             # 确保页面完全加载
             self.driver.execute_script("window.scrollTo(0, 0);")  # 滚动到页面顶部
-            time.sleep(2)  # 等待页面稳定
-            
+            time.sleep(1)  # 等待页面稳定
             # 处理可能出现的弹窗
             self.handle_popups()
             for retry in range(max_retries):
@@ -147,7 +219,7 @@ class OutlookRegistration:
                     logging.info("页面加载完成")
                     
                     # 等待页面渲染和动画完成
-                    time.sleep(5)  # 增加等待时间，确保页面完全渲染
+                    time.sleep(0.5)  # 等待时间，确保页面完全渲染
                     
                     # 尝试等待任何加载指示器消失
                     try:
@@ -218,7 +290,7 @@ class OutlookRegistration:
                                     button_text = button.text.lower()
                                     if '同意' in button_text or 'agree' in button_text or '继续' in button_text or 'continue' in button_text:
                                         self.driver.execute_script("arguments[0].scrollIntoView(true);", button)
-                                        time.sleep(1)
+                                        time.sleep(0.2)
                                         button.click()
                                         logging.info(f"通过文本内容找到并点击按钮: {button_text}")
                                         break
@@ -288,7 +360,7 @@ class OutlookRegistration:
                         # 如果超时，尝试刷新页面
                         logging.info("等待邮箱输入框超时，尝试刷新页面...")
                         self.driver.refresh()
-                        time.sleep(5)
+                        time.sleep(1)
                         email_input = self.wait.until(
                             EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="email"]'))
                         )
@@ -302,7 +374,7 @@ class OutlookRegistration:
                         raise
 
             # 等待页面重新加载完成
-            time.sleep(5)
+            time.sleep(1)
             
             # 生成随机用户信息
             username, password = self.generate_random_info()
@@ -345,7 +417,7 @@ class OutlookRegistration:
                         input.dispatchEvent(new Event('blur', { bubbles: true }));
                         input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
                     """, email_input)
-                    time.sleep(2)
+                    time.sleep(0.5)
                     
                     # 再次检查
                     actual_value = email_input.get_attribute('value')
@@ -370,13 +442,12 @@ class OutlookRegistration:
                     email_input.send_keys(char)
                     time.sleep(0.1)
             
-            # 等待并点击"下一个"按钮
+                # 等待并点击"下一个"按钮
             try:
-                # 等待页面更新
+                # 等待页面更新并确保完全加载
+                self.wait.until(lambda driver: driver.execute_script("return document.readyState") == "complete")
                 time.sleep(2)
-                logging.info("查找下一个按钮...")
-                
-                # 使用更精确的XPath选择器
+                logging.info("查找下一个按钮...")                # 使用更精确的XPath选择器
                 try:
                     # 获取所有按钮并打印其文本内容以便调试
                     buttons = self.driver.find_elements(By.TAG_NAME, "button")
@@ -496,7 +567,7 @@ class OutlookRegistration:
                 
                 # 确保按钮可见
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", next_button)
-                time.sleep(2)
+                time.sleep(0.5)
                 
                 # 尝试多种点击方法
                 try:
@@ -509,7 +580,7 @@ class OutlookRegistration:
                         ActionChains(self.driver).move_to_element(next_button).click().perform()
                 
                 logging.info("点击下一步...")
-                time.sleep(3)  # 等待点击后的页面变化
+                time.sleep(1.5)  # 等待点击后的页面变化
                 
             except Exception as e:
                 logging.error(f"无法点击下一步按钮: {str(e)}")
@@ -521,7 +592,7 @@ class OutlookRegistration:
 
             # 等待页面加载完成
             logging.info("等待页面加载完成...")
-            time.sleep(5)
+            time.sleep(1)
             self.wait.until(lambda driver: driver.execute_script("return document.readyState") == "complete")
             
             # 等待并检查密码输入框
@@ -570,70 +641,156 @@ class OutlookRegistration:
             
             # MARK: 密码输入完成
             
-            # 继续注册流程
+                # 继续注册流程
             try:
-                # 增加更长的等待时间，确保页面完全加载
-                time.sleep(5)
+                # 等待页面完全加载
+                self.wait.until(lambda driver: driver.execute_script("return document.readyState") == "complete")
+                time.sleep(3)  # 给额外时间等待任何动态加载
                 
                 # 查看当前URL以确认我们在正确的页面
                 current_url = self.driver.current_url
                 logging.info(f"当前页面URL: {current_url}")
                 
-                # 尝试多种方法找到并点击下一步按钮
-                submitted = False
-                
-                # 1. 尝试直接提交表单
-                if not submitted:
-                    logging.info("尝试提交表单...")
-                    try:
-                        form = self.driver.find_element(By.TAG_NAME, 'form')
-                        if form:
-                            self.driver.execute_script("arguments[0].submit();", form)
-                            logging.info("表单提交成功")
-                            submitted = True
-                    except Exception as e:
-                        logging.debug(f"表单提交失败: {str(e)}")
-                
-                # 2. 如果表单提交失败，尝试点击下一步按钮
-                if not submitted:
-                    next_button_selectors = [
-                        'button[type="submit"]',
-                        'input[type="submit"]',
-                        '#next',
-                        '#submitButton',
-                        '.button-primary',
-                        'button.ms-Button--primary',
-                        'button[data-task="next"]'
-                    ]
-                
                 next_button = None
+                
+                # 定义密码页面的下一步按钮选择器
+                next_button_selectors = [
+                    'button[type="submit"]',  # 标准提交按钮
+                    'button.btn-primary',     # Bootstrap样式按钮
+                    'button[data-task="next"]', # 自定义属性
+                    'button.ms-Button--primary', # Microsoft样式按钮
+                    'button[data-automation-id="submitButton"]', # 自动化ID
+                    'button:not([disabled])'  # 任何未禁用的按钮
+                ]
+                
+                # 系统地尝试每个选择器
                 for selector in next_button_selectors:
                     try:
-                        buttons = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                        for button in buttons:
-                            if button.is_displayed() and button.is_enabled():
-                                next_button = button
-                                logging.info(f"找到下一步按钮: {selector}")
-                                try:
-                                    # 使用JavaScript点击按钮
-                                    self.driver.execute_script("arguments[0].click();", button)
-                                    logging.info("点击下一步按钮成功")
-                                    time.sleep(3)
-                                    break
-                                except:
-                                    pass
-                    except Exception as e:
-                        logging.debug(f"尝试选择器 {selector} 失败: {str(e)}")
-                        continue
+                        # 使用显式等待查找按钮
+                        temp_wait = WebDriverWait(self.driver, 5)
+                        elements = temp_wait.until(
+                            EC.presence_of_all_elements_located((By.CSS_SELECTOR, selector))
+                        )
                         
-                # 如果还没有成功，保存页面源码以供分析
-                with open('password_page.html', 'w', encoding='utf-8') as f:
-                    f.write(self.driver.page_source)
-                logging.info("已保存密码页面源码到password_page.html")
+                        # 遍历找到的所有按钮
+                        for element in elements:
+                            try:
+                                if element.is_displayed() and element.is_enabled():
+                                    # 检查按钮文本
+                                    button_text = element.text.strip().lower()
+                                    if '下一' in button_text or 'next' in button_text or '继续' in button_text:
+                                        next_button = element
+                                        logging.info(f"找到下一步按钮: {selector}")
+                                        break
+                            except Exception as e:
+                                continue
+                        
+                        if next_button:
+                            break
+                            
+                    except Exception as e:
+                        logging.debug(f"选择器 {selector} 查找失败: {str(e)}")
+                        continue
+                # 如果没有找到按钮，尝试使用XPath
+                if not next_button:
+                    xpath_selectors = [
+                        "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
+                        "//button[contains(., '下一')]",
+                        "//button[contains(., '继续')]",
+                        "//input[@type='submit']",
+                        "//button[@type='submit']"
+                    ]
+                    
+                    for xpath in xpath_selectors:
+                        try:
+                            elements = self.driver.find_elements(By.XPATH, xpath)
+                            for element in elements:
+                                if element.is_displayed() and element.is_enabled():
+                                    next_button = element
+                                    logging.info(f"通过XPath找到下一步按钮: {xpath}")
+                                    break
+                            if next_button:
+                                break
+                        except Exception as e:
+                            logging.debug(f"XPath {xpath} 查找失败: {str(e)}")
+                            continue
+                # 如果仍然没有找到按钮，尝试最后的方法
+                if not next_button:
+                    try:
+                        # 保存当前页面源码以供分析
+                        with open('password_page.html', 'w', encoding='utf-8') as f:
+                            f.write(self.driver.page_source)
+                        logging.info("已保存页面源码到password_page.html")
+                        
+                        # 使用JavaScript查找和点击按钮
+                        next_button = self.driver.execute_script("""
+                            function findButton() {
+                                // 查找所有按钮元素
+                                var buttons = document.getElementsByTagName('button');
+                                for (var i = 0; i < buttons.length; i++) {
+                                    var btn = buttons[i];
+                                    if (btn.offsetParent !== null) {  // 检查元素是否可见
+                                        var text = btn.textContent.toLowerCase();
+                                        if (text.includes('下一') || text.includes('next') || text.includes('继续')) {
+                                            return btn;
+                                        }
+                                    }
+                                }
+                                return null;
+                            }
+                            return findButton();
+                        """)
+                        if next_button:
+                            logging.info("通过JavaScript找到下一步按钮")
+                    except Exception as e:
+                        logging.error(f"使用JavaScript查找按钮失败: {str(e)}")
                 
-                # 等待页面完全加载
-                self.wait.until(lambda driver: driver.execute_script("return document.readyState") == "complete")
-                time.sleep(3)
+                if next_button is None:
+                    raise Exception("无法找到下一步按钮")
+                
+                # 尝试点击按钮
+                try:
+                    # 1. 确保按钮在视图中
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", next_button)
+                    time.sleep(1)
+                    
+                    # 2. 尝试直接点击
+                    try:
+                        next_button.click()
+                        logging.info("成功点击下一步按钮")
+                    except Exception as click_error:
+                        logging.debug(f"直接点击失败: {str(click_error)}")
+                        
+                        # 3. 尝试使用JavaScript点击
+                        try:
+                            self.driver.execute_script("arguments[0].click();", next_button)
+                            logging.info("通过JavaScript成功点击下一步按钮")
+                        except Exception as js_error:
+                            logging.debug(f"JavaScript点击失败: {str(js_error)}")
+                            
+                            # 4. 尝试使用Actions点击
+                            try:
+                                from selenium.webdriver.common.action_chains import ActionChains
+                                actions = ActionChains(self.driver)
+                                actions.move_to_element(next_button).click().perform()
+                                logging.info("通过ActionChains成功点击下一步按钮")
+                            except Exception as action_error:
+                                logging.error(f"所有点击方法都失败: {str(action_error)}")
+                                raise
+                    
+                    # 等待页面变化
+                    time.sleep(2)
+                    
+                    # 验证点击是否成功（检查URL变化或新元素出现）
+                    try:
+                        self.wait.until(lambda d: d.current_url != current_url)
+                        logging.info("检测到页面URL变化，点击成功")
+                    except TimeoutException:
+                        logging.warning("未检测到URL变化，但这可能是正常的")
+                        
+                except Exception as e:
+                    logging.error(f"点击下一步按钮失败: {str(e)}")
+                    raise
                 
                 # 记录页面上所有表单元素
                 logging.info("页面上的表单元素：")
@@ -725,7 +882,7 @@ class OutlookRegistration:
             logging.info("输入姓名...")
             for char in "John":
                 first_name.send_keys(char)
-                time.sleep(0.1)
+                time.sleep(0.05)
             
             # 输入姓氏
             last_name = self.driver.find_element(By.ID, 'LastName')
